@@ -1,7 +1,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Workflow
 metadata:
-  generateName: test-aws-list-stac-validate
+  generateName: stac-validate-collections-
 spec:
   parallelism: 10
   nodeSelector:
