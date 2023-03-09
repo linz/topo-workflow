@@ -1,0 +1,111 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: test-aws-list-stac-validate
+spec:
+  parallelism: 10
+  nodeSelector:
+    karpenter.sh/capacity-type: "spot"
+  serviceAccountName: workflow-runner-sa
+  entrypoint: main
+  arguments:
+    parameters:
+      - name: version-argo-tasks
+        value: "v2"
+      - name: uri
+        value: "s3://linz-imagery-staging/test/stac-validate/"
+  templateDefaults:
+    container:
+      imagePullPolicy: Always
+  templates:
+    - name: main
+      dag:
+        tasks:
+          - name: aws-list
+            template: aws-list
+            arguments:
+              parameters:
+                - name: uri
+                  value: "{{=sprig.trim(workflow.parameters.uri)}}"
+                - name: include
+                  value: "collection.json$"
+          - name: stac-validate
+            template: stac-validate
+            arguments:
+              parameters:
+                - name: file
+                  value: "{{item}}"
+            depends: "aws-list"
+            withParam: "{{tasks.aws-list.outputs.parameters.files}}"
+          # - name: stac-validate
+          #   template: stac-validate
+          #   arguments:
+          #     parameters:
+          #       - name: file
+          #         value: "{{item}}"
+          #     # artifacts:
+          #     #   - name: stac-result
+          #     #     raw:
+          #     #       data: "{{tasks.stac-validate.outputs.result}}"
+          #   depends: "aws-list"
+          #   withParam: "{{tasks.aws-list.outputs.parameters.files}}"
+    - name: aws-list
+      inputs:
+        parameters:
+          - name: uri
+          - name: include
+      container:
+        image: "019359803926.dkr.ecr.ap-southeast-2.amazonaws.com/eks:argo-tasks-{{=sprig.trim(workflow.parameters['version-argo-tasks'])}}"
+        command: [node, /app/index.js]
+        env:
+          - name: AWS_ROLE_CONFIG_PATH
+            value: s3://linz-bucket-config/config.json
+        args:
+          [
+            "list",
+            "--verbose",
+            "--include",
+            "{{inputs.parameters.include}}",
+            "--group",
+            "2",
+            "--output",
+            "/tmp/file_list.json",
+            "{{inputs.parameters.uri}}",
+          ]
+      outputs:
+        parameters:
+          - name: files
+            valueFrom:
+              path: /tmp/file_list.json
+    - name: stac-validate
+      inputs:
+        parameters:
+          - name: file
+      script:
+        # image: "public.ecr.aws/ubuntu/ubuntu:22.10_stable"
+        image: "019359803926.dkr.ecr.ap-southeast-2.amazonaws.com/eks:argo-tasks-{{=sprig.trim(workflow.parameters['version-argo-tasks'])}}"
+        env:
+          - name: AWS_ROLE_CONFIG_PATH
+            value: s3://linz-bucket-config/config.json
+        command:
+          - "bash"
+        source: |
+          PATH_OUT=$(echo "{{inputs.parameters.file}}" | sed 's/,/ /g; s/\[/ /g; s/\]/ /g')
+          node /app/index.js stac-validate --recursive --checksum $PATH_OUT
+    # - name: stac-validate
+    #   inputs:
+    #     parameters:
+    #       - name: file
+    #   container:
+    #     image: "019359803926.dkr.ecr.ap-southeast-2.amazonaws.com/eks:argo-tasks-{{=sprig.trim(workflow.parameters['version-argo-tasks'])}}"
+    #     command: [node, /app/index.js]
+    #     env:
+    #       - name: AWS_ROLE_CONFIG_PATH
+    #         value: s3://linz-bucket-config/config.json
+    #     args:
+    #       [
+    #         "stac-validate",
+    #         "--recursive",
+    #         "--checksum",
+    #         "{{inputs.parameters.file}}",
+    #       ]
