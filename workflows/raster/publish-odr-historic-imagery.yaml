@@ -1,0 +1,105 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/argoproj/argo-workflows/v3.5.5/api/jsonschema/schema.json
+
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: publish-odr-historic-imagery
+  labels:
+    linz.govt.nz/category: raster
+    linz.govt.nz/data-type: raster
+spec:
+  parallelism: 50
+  nodeSelector:
+    karpenter.sh/capacity-type: 'spot'
+  entrypoint: main
+  synchronization:
+    semaphore:
+      configMapKeyRef:
+        name: semaphores
+        key: bulkcopy
+  workflowMetadata:
+    labelsFrom:
+      linz.govt.nz/ticket:
+        expression: workflow.parameters.ticket
+      linz.govt.nz/region:
+        expression: workflow.parameters.region
+  arguments:
+    parameters:
+      - name: version_argo_tasks
+        value: 'v4'
+      - name: ticket
+        description: Ticket ID e.g. 'AIP-55'
+        value: ''
+      - name: region
+        description: Region of the dataset
+        value: 'new-zealand'
+        enum:
+          - 'antarctica'
+          - 'auckland'
+          - 'bay-of-plenty'
+          - 'canterbury'
+          - 'gisborne'
+          - 'global'
+          - 'hawkes-bay'
+          - 'manawatu-whanganui'
+          - 'marlborough'
+          - 'nelson'
+          - 'new-zealand'
+          - 'northland'
+          - 'otago'
+          - 'pacific-islands'
+          - 'southland'
+          - 'taranaki'
+          - 'tasman'
+          - 'waikato'
+          - 'wellington'
+          - 'west-coast'
+      - name: source
+        value: 's3://linz-imagery-staging/test/sample/'
+      - name: target
+        value: 's3://target/path/'
+      - name: target_bucket_name
+        value: ''
+        enum:
+          - 'nz-elevation'
+          - 'nz-imagery'
+          - ''
+      - name: copy_option
+        value: '--no-clobber'
+        enum:
+          - '--no-clobber'
+          - '--force'
+          - '--force-no-clobber'
+  templateDefaults:
+    container:
+      imagePullPolicy: Always
+      image: ''
+  templates:
+    - name: main
+      inputs:
+        parameters:
+          - name: copy_option
+          - name: source
+          - name: target_bucket_name
+          - name: ticket
+          - name: target
+      dag:
+        tasks:
+          - name: push-to-github
+            templateRef:
+              name: tpl-push-to-github
+              template: main
+            arguments:
+              parameters:
+                - name: source
+                  value: '{{inputs.parameters.source}}'
+                - name: target
+                  value: '{{inputs.parameters.target}}'
+                - name: version_argo_tasks
+                  value: '{{workflow.parameters.version_argo_tasks}}'
+                - name: repository
+                  value: "{{=sprig.trimPrefix('nz-', inputs.parameters.target_bucket_name)}}"
+                - name: ticket
+                  value: '{{=sprig.trim(inputs.parameters.ticket)}}'
+                - name: copy_option
+                  value: '{{inputs.parameters.copy_option}}'
