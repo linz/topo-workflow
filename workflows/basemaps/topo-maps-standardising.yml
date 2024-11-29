@@ -119,6 +119,16 @@ spec:
                   from: '{{ tasks.group.outputs.artifacts.output }}'
             depends: group
 
+          - name: topo-stac-validation
+            template: topo-stac-validation
+            arguments:
+              parameters:
+                - name: path
+                  value: '{{ tasks.get-location.outputs.parameters.location }}'
+                - name: scale
+                  value: '{{ inputs.parameters.scale }}'
+            depends: topo-cog-creation
+
           - name: create-config
             template: create-config
             arguments:
@@ -127,7 +137,7 @@ spec:
                   value: '{{ tasks.get-location.outputs.parameters.location }}'
                 - name: scale
                   value: '{{ inputs.parameters.scale }}'
-            depends: 'topo-cog-creation'
+            depends: 'topo-stac-validation'
 
     # List of the topographic tiles from source and import into target bucket
     - name: topo-stac-creation
@@ -138,11 +148,6 @@ spec:
           - name: title
           - name: scale
       container:
-        resources:
-          requests:
-            memory: 30Gi
-            cpu: 15000m # AWS gives 2x cpu cores = memory for most instances
-            ephemeral-storage: 98Gi # 2 pods per 200GB of storage
         image: 019359803926.dkr.ecr.ap-southeast-2.amazonaws.com/argo-tasks:{{workflow.parameters.version_argo_tasks}}
         command: [node, /app/index.js]
         env:
@@ -185,6 +190,22 @@ spec:
           - 'topo-cog-creation'
           - '--from-file={{= inputs.artifacts.grouped.path }}{{inputs.parameters.grouped_id}}.json'
 
+    - name: topo-stac-validation
+      inputs:
+        parameters:
+          - name: path
+      container:
+        image: 019359803926.dkr.ecr.ap-southeast-2.amazonaws.com/argo-tasks:{{workflow.parameters.version_argo_tasks}}
+        command: [node, /app/index.js]
+        env:
+          - name: AWS_ROLE_CONFIG_PATH
+            value: s3://linz-bucket-config/config.json
+        args:
+          - 'bmc'
+          - 'topo-stac-validation'
+          - '--input={{= inputs.parameters.path }}{{= inputs.parameters.scale }}/' # Why this is not working???
+          - '--include-latest'
+          
     # Create a basemaps configuration file to view the imagery
     - name: create-config
       inputs:
