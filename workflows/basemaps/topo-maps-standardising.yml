@@ -3,7 +3,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: WorkflowTemplate
 metadata:
-  name: test-topo-maps-standardising
+  name: test-topo-maps-standardising-by-epsg
   labels:
     linz.govt.nz/category: basemaps
     linz.govt.nz/data-type: raster
@@ -32,6 +32,9 @@ spec:
       - name: source
         description: Source topographic map location
         value: 's3://linz-topographic-upload/topographic/TopoReleaseArchive/NZTopo50_GeoTif_Gridless/'
+        enum:
+          - 's3://linz-topographic-upload/topographic/TopoReleaseArchive/PITopo50_GeoTif/'
+          - 's3://linz-topographic-upload/topographic/TopoReleaseArchive/NZTopo50_GeoTif_Gridless/'
 
       - name: target
         description: Target location for output COGs
@@ -44,6 +47,7 @@ spec:
         description: Title of the processed map
         value: 'Raster Topographic Maps 50k'
         enum:
+          - 'Raster Topographic Maps 25k'
           - 'Raster Topographic Maps 50k'
           - 'Raster Topographic Maps 250k'
 
@@ -51,8 +55,16 @@ spec:
         description: topo50 or topo250
         value: 'topo50'
         enum:
+          - 'topo25'
           - 'topo50'
           - 'topo250'
+
+      - name: latest_only
+        description: Only process the latest version of each map sheet
+        value: 'false'
+        enum:
+          - 'true'
+          - 'false'
 
       - name: group_size
         description: How many items to pass to each create-cog job
@@ -69,6 +81,7 @@ spec:
           - name: target
           - name: title
           - name: scale
+          - name: latest_only
           - name: group_size
       dag:
         tasks:
@@ -90,6 +103,8 @@ spec:
                   value: '{{ inputs.parameters.title }}'
                 - name: scale
                   value: '{{ inputs.parameters.scale }}'
+                - name: latest-only
+                  value: '{{ inputs.parameters.latest_only }}'
             depends: get-location
 
           - name: group
@@ -119,25 +134,14 @@ spec:
                   from: '{{ tasks.group.outputs.artifacts.output }}'
             depends: group
 
-          - name: topo-stac-validation
-            template: topo-stac-validation
-            arguments:
-              parameters:
-                - name: path
-                  value: '{{ tasks.get-location.outputs.parameters.location }}'
-                - name: scale
-                  value: '{{ inputs.parameters.scale }}'
-            depends: topo-cog-creation
-
           - name: create-config
             template: create-config
+            withParam: '{{ tasks.topo-stac-creation.outputs.artifacts.targets }}'
             arguments:
               parameters:
-                - name: path
-                  value: '{{ tasks.get-location.outputs.parameters.location }}'
-                - name: scale
-                  value: '{{ inputs.parameters.scale }}'
-            depends: 'topo-stac-validation'
+                - name: location
+                  value: '{{ item }}'
+            depends: topo-cog-creation
 
     # List of the topographic tiles from source and import into target bucket
     - name: topo-stac-creation
@@ -147,6 +151,7 @@ spec:
           - name: target
           - name: title
           - name: scale
+          - name: latest-only
       container:
         image: 019359803926.dkr.ecr.ap-southeast-2.amazonaws.com/argo-tasks:{{workflow.parameters.version_argo_tasks}}
         command: [node, /app/index.js]
@@ -160,10 +165,13 @@ spec:
           - '--target={{ inputs.parameters.target }}'
           - '--title={{ inputs.parameters.title }}'
           - '--scale={{ inputs.parameters.scale }}'
+          - '--latest-only={{ inputs.parameters.latest-only }}'
       outputs:
         artifacts:
           - name: tiles
             path: /tmp/topo-stac-creation/tiles.json
+          - name: targets
+            path: /tmp/topo-stac-creation/targets.json
 
     - name: topo-cog-creation
       nodeSelector:
@@ -190,29 +198,12 @@ spec:
           - 'topo-cog-creation'
           - '--from-file={{= inputs.artifacts.grouped.path }}{{inputs.parameters.grouped_id}}.json'
 
-    - name: topo-stac-validation
-      inputs:
-        parameters:
-          - name: path
-      container:
-        image: 019359803926.dkr.ecr.ap-southeast-2.amazonaws.com/argo-tasks:{{workflow.parameters.version_argo_tasks}}
-        command: [node, /app/index.js]
-        env:
-          - name: AWS_ROLE_CONFIG_PATH
-            value: s3://linz-bucket-config/config.json
-        args:
-          - 'bmc'
-          - 'topo-stac-validation'
-          - '--input={{= inputs.parameters.path }}{{= inputs.parameters.scale }}/' # Why this is not working???
-          - '--include-latest'
-          
     # Create a basemaps configuration file to view the imagery
     - name: create-config
       inputs:
         parameters:
-          - name: path
+          - name: location
             description: Location of the imagery to create config for
-          - name: scale
       container:
         image: ghcr.io/linz/basemaps/cli:{{ workflow.parameters.version_basemaps_cli }}
         command: [node, /app/node_modules/@basemaps/cogify/dist/index.cjs]
@@ -221,7 +212,7 @@ spec:
             value: s3://linz-bucket-config/config.json
         args:
           - 'config'
-          - '{{= inputs.parameters.path }}{{= inputs.parameters.scale }}-latest/'
+          - '{{ inputs.parameters.location }}'
       outputs:
         parameters:
           - name: url
