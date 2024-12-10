@@ -59,6 +59,14 @@ spec:
           - 'topo50'
           - 'topo250'
 
+      - name: resolution
+        description: the resolution of the map sheets
+        value: 'gridless_600dpi'
+        enum:
+          - 'gridless_300dpi'
+          - 'gridless_600dpi'
+          - 'gridless_1200dpi'
+
       - name: latest_only
         description: Only process the latest version of each map sheet
         value: 'false'
@@ -81,6 +89,7 @@ spec:
           - name: target
           - name: title
           - name: scale
+          - name: resolution
           - name: latest_only
           - name: group_size
       dag:
@@ -103,6 +112,8 @@ spec:
                   value: '{{ inputs.parameters.title }}'
                 - name: scale
                   value: '{{ inputs.parameters.scale }}'
+                - name: resolution
+                  value: '{{ inputs.parameters.resolution }}'
                 - name: latest-only
                   value: '{{ inputs.parameters.latest_only }}'
             depends: get-location
@@ -136,12 +147,13 @@ spec:
 
           - name: create-config
             template: create-config
-            withParam: '{{ tasks.topo-stac-creation.outputs.artifacts.targets }}'
+            when: '{{ item.epsg }} == 2193'
+            withParam: '{{ tasks.topo-stac-creation.outputs.parameters.targets }}'
             arguments:
               parameters:
                 - name: location
-                  value: '{{ item }}'
-            depends: topo-cog-creation
+                  value: '{{ item.url }}'
+            depends: topo-stac-creation && topo-cog-creation
 
     # List of the topographic tiles from source and import into target bucket
     - name: topo-stac-creation
@@ -151,6 +163,7 @@ spec:
           - name: target
           - name: title
           - name: scale
+          - name: resolution
           - name: latest-only
       container:
         image: 019359803926.dkr.ecr.ap-southeast-2.amazonaws.com/argo-tasks:{{workflow.parameters.version_argo_tasks}}
@@ -165,13 +178,16 @@ spec:
           - '--target={{ inputs.parameters.target }}'
           - '--title={{ inputs.parameters.title }}'
           - '--scale={{ inputs.parameters.scale }}'
+          - '--resolution={{ inputs.parameters.resolution }}'
           - '--latest-only={{ inputs.parameters.latest-only }}'
       outputs:
         artifacts:
           - name: tiles
             path: /tmp/topo-stac-creation/tiles.json
+        parameters:
           - name: targets
-            path: /tmp/topo-stac-creation/targets.json
+            valueFrom:
+              path: /tmp/topo-stac-creation/targets.json
 
     - name: topo-cog-creation
       nodeSelector:
