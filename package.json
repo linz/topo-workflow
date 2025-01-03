@@ -28,7 +28,7 @@
     "@aws-sdk/client-eks": "3.658.1",
     "@aws-sdk/client-ssm": "3.658.1",
     "@linzjs/style": "^5.4.0",
-    "@types/node": "^22.7.3",
+    "@types/node": "^22.10.5",
     "aws-cdk": "2.160.x",
     "aws-cdk-lib": "2.160.x",
     "cdk8s": "^2.69.5",
