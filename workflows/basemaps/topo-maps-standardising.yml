@@ -3,7 +3,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: WorkflowTemplate
 metadata:
-  name: test-topo-maps-standardising-by-epsg
+  name: topo-raster-maps-standardising
   labels:
     linz.govt.nz/category: basemaps
     linz.govt.nz/data-type: raster
@@ -27,18 +27,20 @@ spec:
 
       - name: version_argo_tasks
         description: Version of the argo tasks CLI docker container to use
-        value: pr-1145
+        value: v4
 
       - name: source
         description: Source topographic map location
         value: 's3://linz-topographic-upload/topographic/TopoReleaseArchive/NZTopo50_GeoTif_Gridless/'
         enum:
           - 's3://linz-topographic-upload/topographic/TopoReleaseArchive/PITopo50_GeoTif/'
+          - 's3://linz-topographic-upload/topographic/TopoReleaseArchive/PITopo250_GeoTif/'
           - 's3://linz-topographic-upload/topographic/TopoReleaseArchive/NZTopo50_GeoTif_Gridless/'
+          - 's3://linz-topographic-upload/topographic/TopoReleaseArchive/NZTopo250_GeoTif_Gridless/'
 
       - name: target
         description: Target location for output COGs
-        value: 's3://linz-basemaps-staging/'
+        value: 's3://linz-topographic/'
         enum:
           - 's3://linz-basemaps-staging/'
           - 's3://linz-topographic/'
@@ -66,7 +68,7 @@ spec:
           - 'gridless_300dpi'
           - 'gridless_600dpi'
           - 'gridless_1200dpi'
-
+          
       - name: latest_only
         description: Only process the latest version of each map sheet
         value: 'false'
@@ -184,6 +186,8 @@ spec:
         artifacts:
           - name: tiles
             path: /tmp/topo-stac-creation/tiles.json
+          - name: brokenTiffs
+            path: /tmp/topo-stac-creation/brokenTiffs.json
         parameters:
           - name: targets
             valueFrom:
@@ -204,15 +208,15 @@ spec:
             memory: 30Gi
             cpu: 15000m # AWS gives 2x cpu cores = memory for most instances
             ephemeral-storage: 98Gi # 2 pods per 200GB of storage
-        image: 019359803926.dkr.ecr.ap-southeast-2.amazonaws.com/argo-tasks:{{workflow.parameters.version_argo_tasks}}
-        command: [node, /app/index.js]
+        image: ghcr.io/linz/basemaps/cli:{{ workflow.parameters.version_basemaps_cli }}
+        command: [node, /app/node_modules/@basemaps/cogify/dist/index.cjs]
         env:
           - name: AWS_ROLE_CONFIG_PATH
             value: s3://linz-bucket-config/config.json
         args:
-          - 'bmc'
-          - 'topo-cog-creation'
+          - 'create'
           - '--from-file={{= inputs.artifacts.grouped.path }}{{inputs.parameters.grouped_id}}.json'
+          - '--concurrency=2'
 
     # Create a basemaps configuration file to view the imagery
     - name: create-config
