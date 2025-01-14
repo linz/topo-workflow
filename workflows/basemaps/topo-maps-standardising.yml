@@ -80,6 +80,18 @@ spec:
         description: How many items to pass to each create-cog job
         value: '50'
 
+      - name: copy_option
+        description: --no-clobber Skip overwriting existing files. --force Overwrite all files. --force-no-clobber Overwrite only changed files, skip unchanged files.
+        value: '--force-no-clobber'
+        enum:
+          - '--no-clobber'
+          - '--force'
+          - '--force-no-clobber'
+
+      - name: aws_role_config_path
+        description: s3 URL or comma-separated list of s3 URLs allowing the workflow to write to a target(s)
+        value: 's3://linz-bucket-config/config-write.topographic.json,s3://linz-bucket-config/config.basemaps.json'
+
   templates:
     # Main entrypoint into the workflow
     - name: main
@@ -157,6 +169,51 @@ spec:
                   value: '{{ item.url }}'
             depends: topo-stac-creation && topo-cog-creation
 
+          - name: copy
+            templateRef:
+              name: copy
+              template: main
+            when: '{{ inputs.parameters.latest_only }} == false'
+            arguments:
+              parameters:
+                - name: source
+                  value: '{{ tasks.get-location.outputs.parameters.location }}{{ inputs.parameters.scale }}/'
+                - name: target
+                  value: '{{ inputs.parameters.target }}{{ inputs.parameters.scale }}/'
+                - name: include
+                  value: '\.tiff?$|\.json$'
+                - name: exclude
+                  value: ''
+                - name: flatten
+                  value: 'false'
+                - name: group
+                  value: '1000'
+                - name: group_size
+                  value: '100Gi'
+            depends: topo-stac-creation && topo-cog-creation
+
+          - name: copy-latest
+            templateRef:
+              name: copy
+              template: main
+            arguments:
+              parameters:
+                - name: source
+                  value: '{{ tasks.get-location.outputs.parameters.location }}{{ inputs.parameters.scale }}_latest/'
+                - name: target
+                  value: '{{ inputs.parameters.target }}{{ inputs.parameters.scale }}_latest/'
+                - name: include
+                  value: '\.tiff?$|\.json$'
+                - name: exclude
+                  value: ''
+                - name: flatten
+                  value: 'false'
+                - name: group
+                  value: '1000'
+                - name: group_size
+                  value: '100Gi'
+            depends: topo-stac-creation && topo-cog-creation
+
     # List of the topographic tiles from source and import into target bucket
     - name: topo-stac-creation
       inputs:
@@ -217,6 +274,7 @@ spec:
           - 'create'
           - '--from-file={{= inputs.artifacts.grouped.path }}{{inputs.parameters.grouped_id}}.json'
           - '--concurrency=2'
+          - '--topo'
 
     # Create a basemaps configuration file to view the imagery
     - name: create-config
