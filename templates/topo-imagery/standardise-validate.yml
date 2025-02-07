@@ -1,0 +1,121 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/argoproj/argo-workflows/v3.5.5/api/jsonschema/schema.json
+
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  # Template from https://github.com/linz/topo-imagery
+  # see https://github.com/linz/topo-imagery/blob/master/scripts/standardise_validate.py
+  name: tpl-ti-standardise-validate
+spec:
+  templateDefaults:
+    container:
+      imagePullPolicy: Always
+      image: ''
+  entrypoint: main
+  templates:
+    - name: main
+      inputs:
+        parameters:
+          - name: version_topo_imagery
+            description: version of topo-imagery to use
+            default: 'v7'
+
+          - name: group_id
+            description: 'The ID of the group of files to use as the input.'
+            default: ''
+
+          - name: odr_url
+            description: '(Optional) If an existing dataset add the S3 path to the dataset here to load existing metadata e.g. "s3://nz-imagery/taranaki/new-plymouth_2017_0.1m/rgb/2193/"'
+            default: ''
+
+          - name: target
+            description: 'Location for output files'
+            default: ''
+
+          - name: collection_id
+            description: 'Collection ID of existing dataset, or else a generated collection ID'
+            default: ''
+
+          - name: compression
+            description: 'Compression type to use when standardising TIFFs, e.g. "webp" for imagery or "dem_lerc" for elevation data'
+            default: ''
+
+          - name: current_datetime
+            description: 'Current date and time of the workflow'
+            default: ''
+
+          - name: start_datetime
+            description: 'Dataset capture start date in numeric format YYYY-MM-DD, e.g. "2024-01-14"'
+            default: ''
+
+          - name: end_datetime
+            description: 'Dataset capture end date in numeric format YYYY-MM-DD, e.g. "2024-02-23"'
+            default: ''
+
+          - name: create_capture_area
+            description: 'Create a capture area GeoJSON file for the standardised dataset'
+            default: ''
+
+          - name: cutline
+            description: '(Optional) location of a cutline file to cut the imagery to .fgb or .geojson'
+            default: ''
+
+          - name: gsd
+            description: 'Dataset GSD in metres, e.g., "0.3" for 30 centimetres'
+            default: ''
+
+          - name: source_epsg
+            description: 'EPSG of the source files'
+            default: '2193'
+
+          - name: target_epsg
+            description: 'EPSG of the standardised output files'
+            default: '2193'
+
+        artifacts:
+          - name: group_data
+            path: /tmp/input/
+
+      container:
+        image: '019359803926.dkr.ecr.ap-southeast-2.amazonaws.com/topo-imagery:{{=sprig.trim(inputs.parameters.version_topo_imagery)}}'
+        env:
+          - name: AWS_ROLE_CONFIG_PATH
+            value: s3://linz-bucket-config/config.json
+        args:
+          - python
+          - '/app/scripts/standardise_validate.py'
+          - '--from-file'
+          - '/tmp/input/{{inputs.parameters.group_id}}.json'
+          - '--target'
+          - '{{inputs.parameters.target}}'
+          - '--preset'
+          - '{{inputs.parameters.compression}}'
+          - '--start-datetime'
+          - '{{=sprig.trim(inputs.parameters.start_datetime)}}'
+          - '--end-datetime'
+          - '{{=sprig.trim(inputs.parameters.end_datetime)}}'
+          - '--collection-id'
+          - '{{inputs.parameters.collection_id}}'
+          - '--create-footprints'
+          - '{{workflow.parameters.create_capture_area}}'
+          - '--cutline'
+          - '{{=sprig.trim(inputs.parameters.cutline)}}'
+          - '--source-epsg'
+          - '{{=sprig.trim(inputs.parameters.source_epsg)}}'
+          - '--target-epsg'
+          - '{{=sprig.trim(inputs.parameters.target_epsg)}}'
+          - '--gsd'
+          - '{{=sprig.trim(inputs.parameters.gsd)}}'
+          - '--odr-url'
+          - '{{=sprig.trim(inputs.parameters.odr_url)}}'
+          - '--current-datetime'
+          - '{{inputs.parameters.current_datetime}}'
+        resources:
+          requests:
+            memory: 7.8Gi
+            cpu: 15000m
+            ephemeral-storage: 29.5Gi
+        volumeMounts:
+          # This volume must be defined in the workflow calling this workflowTemplate
+          - name: ephemeral
+            mountPath: '/tmp'
