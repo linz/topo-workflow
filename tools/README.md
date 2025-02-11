@@ -5,9 +5,9 @@ The scripts should be stored in this folder if they may become useful again in t
 
 ## generate-argo-cli-commands-elevation.py
 
-**Date:** 31/07/2023
+**Date:** 14/02/2024
 
-**Related Jira Tickets:** [TDE-783](https://toitutewhenua.atlassian.net/browse/TDE-783?atlOrigin=eyJpIjoiODhlMWFkYTVlYzhiNGJjYTgwOTI4OWVjNmQ3YzczMjciLCJwIjoiaiJ9)
+**Related Jira Tickets:** [TDE-783](https://toitutewhenua.atlassian.net/browse/TDE-783) [TDE-997](https://toitutewhenua.atlassian.net/browse/TDE-997)
 
 **Description:**  
 This script sets up for the automated processing of numerous elevation datasets using the argo cli.
@@ -23,7 +23,7 @@ python3 generate-argo-cli-commands-elevation.py
 
 **Output:**
 
-- **region-year-datatype-scale.yaml:** workflow parameters for this dataset
+- **region-year-datatype-gsd.yaml:** workflow parameters for this dataset
 - **standardise-publish.sh:** bash script to 'deploy' argo workflows  
    **nb: the commented lines at the end of this file detail the datasets not run due to know issues.**
 

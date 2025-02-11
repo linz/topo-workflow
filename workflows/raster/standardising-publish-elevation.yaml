@@ -1,0 +1,106 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/argoproj/argo-workflows/v3.4.13/api/jsonschema/schema.json
+
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: elevation-standardising-publish-import-
+  namespace: argo
+  labels:
+    linz.govt.nz/category: raster
+    linz.govt.nz/data-type: raster
+spec:
+  parallelism: 20
+  nodeSelector:
+    karpenter.sh/capacity-type: 'spot'
+  entrypoint: main
+  synchronization:
+    semaphore:
+      configMapKeyRef:
+        name: semaphores
+        key: bulk
+  workflowMetadata:
+    labelsFrom:
+      linz.govt.nz/ticket:
+        expression: workflow.parameters.ticket
+      linz.govt.nz/region:
+        expression: workflow.parameters.region
+  arguments:
+    parameters:
+      - name: ticket
+        value: ''
+      - name: region
+        value: ''
+      - name: geographic_description
+        value: ''
+      - name: source
+        value: ''
+      - name: target_bucket_name
+        value: ''
+      - name: cutline # optional standardising cutline
+        value: ''
+      - name: collection_id # optional
+        value: ''
+      - name: event # optional
+        value: ''
+      - name: historic_survey_number # optional
+        value: ''
+      - name: compression
+        value: 'webp'
+      - name: source_epsg
+        value: '2193'
+      - name: target_epsg
+        value: '2193'
+      - name: group
+        value: '50'
+      - name: copy_option
+        value: '--no-clobber'
+      - name: include
+        value: '.tiff?$'
+      - name: transform
+        value: 'f'
+      - name: validate
+        value: 'true'
+      - name: retile
+        value: 'false'
+      - name: lifecycle
+        value: 'completed'
+      - name: version_argo_tasks
+        value: 'v3'
+      - name: version_basemaps_cli
+        value: 'v6'
+      - name: version_topo_imagery
+        value: 'v4'
+  templateDefaults:
+    container:
+      imagePullPolicy: Always
+      image: ''
+  templates:
+    - name: main
+      steps:
+        - - name: standardise
+            templateRef:
+              name: test-imagery-standardising
+              template: main
+            arguments:
+              parameters:
+                - name: source
+                  value: '{{workflow.parameters.source}}'
+        - - name: publish-odr
+            templateRef:
+              name: publish-odr
+              template: main
+            arguments:
+              parameters:
+                - name: source
+                  value: '{{steps.standardise.outputs.parameters.target}}flat/'
+                - name: include
+                  value: '\.tiff?$|\.json$|/capture-area\.geojson$'
+                - name: target_bucket_name
+                  value: "{{workflow.parameters.target_bucket_name}}"
+                - name: group
+                  value: '1000'
+                - name: group_size
+                  value: '100Gi'
+  volumes:
+    - name: ephemeral
+      emptyDir: {}
