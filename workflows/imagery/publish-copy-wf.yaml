@@ -1,0 +1,59 @@
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: bulk-publish-
+  namespace: argo
+spec:
+  parallelism: 50
+  nodeSelector:
+    karpenter.sh/capacity-type: "spot"
+  entrypoint: main
+  synchronization:
+    semaphore:
+      configMapKeyRef:
+        name: semaphores
+        key: bulkcopy
+  arguments:
+    parameters:
+      - name: copy-option
+        value: "--no-clobber"
+      - name: group
+        value: "1000"
+      - name: group-size
+        value: "100Gi"
+      - name: include
+        value: ".tiff?$|.json$"
+      - name: transform
+        value: "f"
+      - name: validate
+        value: "true"
+      - name: version-argo-tasks
+        value: "v2"
+  templateDefaults:
+    container:
+      imagePullPolicy: Always
+  templates:
+    - name: main
+      steps:
+        - - name: publish
+            templateRef:
+              name: publish-copy
+              template: main
+            arguments:
+              parameters:
+                - name: source
+                  value: "{{workflow.parameters.source}}"
+                - name: include
+                  value: "{{workflow.parameters.include}}"
+                - name: group
+                  value: "{{workflow.parameters.group}}"
+                - name: group-size
+                  value: "{{workflow.parameters.group-size}}"
+  volumes:
+    - name: ephemeral
+      emptyDir: {}
+    - name: secret-volume
+      secret:
+        secretName: "github-linz-{{=sprig.regexFind('(elevation|imagery)', workflow.parameters.target)}}"
+        defaultMode: 384
