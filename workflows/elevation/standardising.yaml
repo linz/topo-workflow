@@ -1,0 +1,102 @@
+---
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: test-elevation-standardising
+  namespace: argo
+spec:
+  parallelism: 50
+  nodeSelector:
+    karpenter.sh/capacity-type: "spot"
+  entrypoint: main
+  synchronization:
+    semaphore:
+      configMapKeyRef:
+        name: semaphores
+        key: standardising
+  arguments:
+    parameters:
+      - name: version-argo-tasks
+        value: "v2"
+      - name: version-topo-imagery
+        value: "v2"
+      - name: source
+        value: ""
+      - name: include
+        value: ".tiff?$"
+      - name: group
+        value: "50"
+  templateDefaults:
+    container:
+      imagePullPolicy: Always
+  templates:
+    - name: main
+      dag:
+        tasks:
+          - name: aws-list
+            template: aws-list
+          - name: standardise
+            template: standardise
+            arguments:
+              parameters:
+                - name: file
+                  value: "{{item}}"
+            depends: "aws-list"
+            withParam: "{{tasks.aws-list.outputs.parameters.files}}"
+    - name: aws-list
+      container:
+        image: "019359803926.dkr.ecr.ap-southeast-2.amazonaws.com/eks:argo-tasks-{{=sprig.trim(workflow.parameters['version-argo-tasks'])}}"
+        command: [node, /app/index.js]
+        env:
+          - name: AWS_ROLE_CONFIG_PATH
+            value: s3://linz-bucket-config/config.json
+        args:
+          [
+            "list",
+            "--verbose",
+            "--include",
+            "{{=sprig.trim(workflow.parameters.include)}}",
+            "--group",
+            "{{=sprig.trim(workflow.parameters.group)}}",
+            "--output",
+            "/tmp/file_list.json",
+            "{{=sprig.trim(workflow.parameters.source)}}",
+          ]
+      outputs:
+        parameters:
+          - name: files
+            valueFrom:
+              path: /tmp/file_list.json
+    - name: standardise
+      retryStrategy:
+        limit: "2"
+      nodeSelector:
+        karpenter.sh/capacity-type: "spot"
+      inputs:
+        parameters:
+          - name: file
+      container:
+        image: "ghcr.io/paulfouquet/topo-imagery-test:latest"
+        resources:
+          requests:
+            memory: 7.8Gi
+            cpu: 15000m
+            ephemeral-storage: 3Gi
+        volumeMounts:
+          - name: ephemeral
+            mountPath: "/tmp"
+        command:
+          - python
+          - "/app/scripts/elevation/standardising.py"
+        args:
+          - "--source"
+          - "{{inputs.parameters.file}}"
+      outputs:
+        artifacts:
+          - name: standardised_tiffs
+            path: /tmp/
+            archive:
+              none: {}
+  volumes:
+    - name: ephemeral
+      emptyDir: {}
