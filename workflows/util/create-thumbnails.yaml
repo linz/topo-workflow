@@ -13,6 +13,7 @@ spec:
   nodeSelector:
     karpenter.sh/capacity-type: 'spot'
   entrypoint: main
+  onExit: exit-handler
   arguments:
     parameters:
       - name: version_argo_tasks
@@ -84,6 +85,12 @@ spec:
         artifacts:
           - name: files
             path: /tmp/file_list.json
+      outputs:
+        parameters:
+          - name: count
+            globalName: count
+            valueFrom:
+              path: /tmp/thumbnails/count
       container:
         image: '019359803926.dkr.ecr.ap-southeast-2.amazonaws.com/topo-imagery:{{=sprig.trim(workflow.parameters.version_topo_imagery)}}'
         resources:
@@ -101,6 +108,78 @@ spec:
           - '/tmp/file_list.json'
           - '--target'
           - '{{inputs.parameters.target}}'
+
+    - name: exit-handler
+      steps:
+        - - name: notify
+            template: notify-slack
+            when: "{{workflow.status}} == Succeeded"
+
+    - name: notify-slack
+      inputs:
+        parameters:
+          - name: count
+            value: "{{workflow.outputs.parameters.count}}"
+      script:
+        image: "019359803926.dkr.ecr.ap-southeast-2.amazonaws.com/eks:argo-tasks-{{=sprig.trim(workflow.parameters['version-argo-tasks'])}}"
+        env:
+          - name: PARAMS
+            value: "{{workflow.parameters}}"
+          - name: WEBHOOK
+            valueFrom:
+              secretKeyRef:
+                name: slack-linz-webhook # name of the secret that stores linz Slack webhook
+                key: url # the Slack Webhook URL is stored as `url`
+        command: [node]
+        source: |
+          const slackWebhook = process.env.WEBHOOK
+          const params = JSON.parse(process.env.PARAMS);
+
+          var paramFields = []
+          params.forEach((param) => paramFields.push({type: "mrkdwn", text: "*" + param.name + ":*\n " + param.value}));
+
+          const payload = {
+              icon_url: "https://cncf-branding.netlify.app/img/projects/argo/icon/color/argo-icon-color.png",
+              username: "Argo Workflows [bot]",
+              channel: "#alert-argo-workflows",
+              blocks: [
+                {
+                  type: "header",
+                  text: {
+                    type: "plain_text",
+                    text: ":frame_with_picture: Thumbnails Created",
+                    emoji: true
+                  }
+                },
+                {
+                  type: "section",
+                  text: {
+                    type: "mrkdwn",
+                    text: "{{inputs.parameters.count}} files have been generated."
+                  }
+                },
+                {
+                  type: "section",
+                  fields: paramFields
+                },
+              ],
+            };
+
+          fetch(slackWebhook, {
+            method: "POST",
+            body: JSON.stringify(payload),
+            headers: {
+                "Content-Type": "application/json; charset=utf-8",
+                "Content-Length": JSON.stringify(payload).length,
+                Accept: "application/json",
+          },
+          })
+          .then((res) => {
+            console.log(res);
+          })
+          .catch((error) => {
+              console.log(error);
+          });
 
   volumes:
     - name: ephemeral

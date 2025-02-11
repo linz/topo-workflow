@@ -31,6 +31,8 @@ graph TD;
     create-thumbnails-->publish-thumbnails;
 ```
 
+Note: `#alert-argo-workflows` Slack channel is notified once the workflow is completed.
+
 ### [aws-list](https://github.com/linz/argo-tasks/blob/master/src/commands/list/list.ts)
 
 Recursively loops through the provided source path and lists all the files within this location. Some listing parameters are currently hard-coded due to the current bespoke purpose of this workflow:
