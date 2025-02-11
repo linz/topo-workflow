@@ -1,0 +1,595 @@
+---
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: test-imagery-standardising-two-scales
+  namespace: argo
+spec:
+  parallelism: 50
+  nodeSelector:
+    karpenter.sh/capacity-type: "spot"
+  entrypoint: main
+  synchronization:
+    semaphore:
+      configMapKeyRef:
+        name: semaphores
+        key: standardising
+  arguments:
+    parameters:
+      - name: version-argo-tasks
+        value: "v2"
+      - name: version-basemaps-cli
+        value: "v6"
+      - name: version-topo-imagery
+        value: "v1"
+      - name: source
+        value: ""
+      - name: include1
+        value: ""
+      - name: include2
+        value: ""
+      - name: scale1
+        description: has to match include1
+        value: "500"
+        enum:
+          - "500"
+          - "1000"
+          - "2000"
+          - "5000"
+          - "10000"
+      - name: scale2
+        description: has to match include2
+        value: "500"
+        enum:
+          - "500"
+          - "1000"
+          - "2000"
+          - "5000"
+          - "10000"
+      - name: group
+        value: "50"
+      - name: compression
+        value: "webp"
+        enum:
+          - "webp"
+          - "lzw"
+      - name: cutline
+        description: "(Optional) location of a cutline file to cut the imagery to .fgb or .geojson"
+        value: ""
+      - name: title
+        value: "*Region/District/City* *GSD* *Urban/Rural* Aerial Photos (*Year-Year*)"
+      - name: description
+        value: "Orthophotography within the *Region Name* region captured in the *Year*-*Year* flying season."
+      - name: producer
+        value: "Unknown"
+        enum:
+          [
+            "Unknown",
+            "AAM NZ",
+            "Aerial Surveys",
+            "Beca",
+            "GeoSmart",
+            "Landpro",
+            "Maxar",
+            "NZ Aerial Mapping",
+            "Recon",
+            "SkyCan",
+            "Terralink International",
+            "UAV Mapping NZ",
+          ]
+      - name: licensor
+        value: "Unknown"
+        enum:
+          [
+            "Unknown",
+            "Ashburton District Council",
+            "Auckland Council",
+            "BOPLASS",
+            "Bay of Plenty Regional Council",
+            "Buller District Council",
+            "Canterbury Aerial Imagery Consortium (CAI)",
+            "Carterton District Council",
+            "Central Hawke's Bay District Council",
+            "Central Otago District Council",
+            "Chatham Islands Council",
+            "Christchurch City Council",
+            "Clutha District Council",
+            "CoLAB",
+            "Department of Conservation",
+            "Dunedin City Council",
+            "Environment Canterbury",
+            "Environment Southland",
+            "Far North District Council",
+            "Gisborne District Council",
+            "Gore District Council",
+            "Greater Wellington Regional Council",
+            "Grey District Council",
+            "Hamilton City Council",
+            "Hastings District Council",
+            "Hauraki District Council",
+            "Hawke's Bay Local Authority Shared Services (HB LASS)",
+            "Hawke's Bay Regional Council",
+            "Horizons Regional Council",
+            "Horowhenua District Council",
+            "Hurunui District Council",
+            "Hutt City Council",
+            "Invercargill City Council",
+            "Kaikōura District Council",
+            "Kaipara District Council",
+            "Kawerau District Council",
+            "Kāpiti Coast District Council",
+            "Mackenzie District Council",
+            "Manawatū District Council",
+            "Manawatū-Whanganui LASS",
+            "Marlborough District Council",
+            "Masterton District Council",
+            "Matamata-Piako District Council",
+            "Maxar Technologies",
+            "Ministry of Primary Industries",
+            "NZ Aerial Mapping",
+            "Napier City Council",
+            "Nelson City Council",
+            "New Plymouth District Council",
+            "Northland Regional Council",
+            "Ōpōtiki District Council",
+            "Ōtorohanga District Council",
+            "Otago Regional Council",
+            "Palmerston North City Council",
+            "Porirua City Council",
+            "Queenstown-Lakes District Council",
+            "Rangitīkei District Council",
+            "Rotorua District Council",
+            "Ruapehu District Council",
+            "Selwyn District Council",
+            "Sinergise",
+            "South Taranaki District Council",
+            "South Waikato District Council",
+            "South Wairarapa District Council",
+            "Southland District Council",
+            "Stratford District Council",
+            "Taranaki Regional Council",
+            "Tararua District Council",
+            "Tasman District Council",
+            "Taupō District Council",
+            "Tauranga City Council",
+            "Terralink International",
+            "Thames-Coromandel District Council",
+            "Timaru District Council",
+            "Toitū Te Whenua Land Information New Zealand",
+            "Upper Hutt City Council",
+            "Waikato District Council",
+            "Waikato Regional Aerial Photography Service (WRAPS)",
+            "Waikato Regional Council",
+            "Waimakariri District Council",
+            "Waimate District Council",
+            "Waipā District Council",
+            "Wairoa District Council",
+            "Waitaki District Council",
+            "Waitomo District Council",
+            "Waka Kotahi",
+            "Wellington City Council",
+            "West Coast Regional Council",
+            "Western Bay of Plenty District Council",
+            "Westland District Council",
+            "Whakatāne District Council",
+            "Whanganui District Council",
+            "Whangārei District Council",
+          ]
+      - name: licensor-list
+        description: "(Optional) Separate the licensor names by a semi-colon (;). It has no effect unless a semicolon-delimited list is entered."
+        value: ""
+      - name: start-datetime
+        value: "YYYY-MM-DD"
+      - name: end-datetime
+        value: "YYYY-MM-DD"
+      - name: copy-option
+        value: "--no-clobber"
+        enum:
+          - "--no-clobber"
+          - "--force"
+          - "--force-no-clobber"
+  templateDefaults:
+    container:
+      imagePullPolicy: Always
+  templates:
+    - name: main
+      dag:
+        tasks:
+          - name: aws-list1
+            template: aws-list1
+          - name: aws-list2
+            template: aws-list2
+          - name: generate-ulid
+            template: generate-ulid
+          - name: standardise-validate1
+            template: standardise-validate1
+            arguments:
+              parameters:
+                - name: file
+                  value: "{{item}}"
+                - name: collection-id
+                  value: "{{tasks.generate-ulid.outputs.parameters.ulid}}"
+            depends: "aws-list1 && generate-ulid"
+            withParam: "{{tasks.aws-list1.outputs.parameters.files}}"
+          - name: standardise-validate2
+            template: standardise-validate2
+            arguments:
+              parameters:
+                - name: file
+                  value: "{{item}}"
+                - name: collection-id
+                  value: "{{tasks.generate-ulid.outputs.parameters.ulid}}"
+            depends: "aws-list2 && generate-ulid"
+            withParam: "{{tasks.aws-list2.outputs.parameters.files}}"
+          - name: flatten
+            template: flatten
+            arguments:
+              parameters:
+                - name: location
+                  value: "{{tasks.get-location.outputs.parameters.location}}"
+            depends: "get-location && standardise-validate1 && standardise-validate2"
+          - name: flatten-copy
+            template: flatten-copy
+            arguments:
+              parameters:
+                - name: file
+                  value: "{{item}}"
+            depends: "flatten"
+            withParam: "{{tasks.flatten.outputs.parameters.files}}"
+          - name: create-collection
+            template: create-collection
+            arguments:
+              parameters:
+                - name: collection-id
+                  value: "{{tasks.generate-ulid.outputs.parameters.ulid}}"
+                - name: location
+                  value: "{{tasks.get-location.outputs.parameters.location}}"
+            depends: "flatten-copy"
+          - name: stac-validate
+            template: stac-validate
+            arguments:
+              parameters:
+                - name: location
+                  value: "{{tasks.get-location.outputs.parameters.location}}"
+              artifacts:
+                - name: stac-result
+                  raw:
+                    data: "{{tasks.stac-validate.outputs.result}}"
+            depends: "create-collection"
+          - name: get-location
+            template: get-location
+          - name: create-overview
+            arguments:
+              parameters:
+                - name: location
+                  value: "{{tasks.get-location.outputs.parameters.location}}"
+            template: create-overview
+            depends: "get-location && flatten-copy"
+          - name: create-config
+            arguments:
+              parameters:
+                - name: location
+                  value: "{{tasks.get-location.outputs.parameters.location}}"
+            template: create-config
+            depends: "get-location && create-overview"
+      outputs:
+        parameters:
+          - name: target
+            valueFrom:
+              parameter: "{{tasks.get-location.outputs.parameters.location}}"
+    - name: aws-list1
+      container:
+        image: "ghcr.io/linz/argo-tasks:{{=sprig.trim(workflow.parameters['version-argo-tasks'])}}"
+        command: [node, /app/index.js]
+        env:
+          - name: AWS_ROLE_CONFIG_PATH
+            value: s3://linz-bucket-config/config.json
+        args:
+          [
+            "list",
+            "--verbose",
+            "--include",
+            "{{=sprig.trim(workflow.parameters.include1)}}",
+            "--group",
+            "{{=sprig.trim(workflow.parameters.group)}}",
+            "--output",
+            "/tmp/file_list1.json",
+            "{{=sprig.trim(workflow.parameters.source)}}",
+          ]
+      outputs:
+        parameters:
+          - name: files
+            valueFrom:
+              path: /tmp/file_list1.json
+    - name: aws-list2
+      container:
+        image: "ghcr.io/linz/argo-tasks:{{=sprig.trim(workflow.parameters['version-argo-tasks'])}}"
+        command: [ node, /app/index.js ]
+        env:
+          - name: AWS_ROLE_CONFIG_PATH
+            value: s3://linz-bucket-config/config.json
+        args:
+          [
+            "list",
+            "--verbose",
+            "--include",
+            "{{=sprig.trim(workflow.parameters.include2)}}",
+            "--group",
+            "{{=sprig.trim(workflow.parameters.group)}}",
+            "--output",
+            "/tmp/file_list2.json",
+            "{{=sprig.trim(workflow.parameters.source)}}",
+          ]
+      outputs:
+        parameters:
+          - name: files
+            valueFrom:
+              path: /tmp/file_list2.json
+    - name: generate-ulid
+      script:
+        image: "ghcr.io/linz/topo-imagery:{{=sprig.trim(workflow.parameters['version-topo-imagery'])}}"
+        command: [python]
+        source: |
+          import ulid
+          with open("/tmp/ulid", "w") as f:
+            f.write(str(ulid.ULID()))
+      outputs:
+        parameters:
+          - name: ulid
+            valueFrom:
+              path: "/tmp/ulid"
+    - name: standardise-validate1
+      retryStrategy:
+        limit: "2"
+      nodeSelector:
+        karpenter.sh/capacity-type: "spot"
+      inputs:
+        parameters:
+          - name: file
+          - name: collection-id
+      container:
+        image: "ghcr.io/linz/topo-imagery:{{=sprig.trim(workflow.parameters['version-topo-imagery'])}}"
+        resources:
+          requests:
+            memory: 7.8Gi
+            cpu: 15000m
+            ephemeral-storage: 3Gi
+        volumeMounts:
+          - name: ephemeral
+            mountPath: "/tmp"
+        command:
+          - python
+          - "/app/scripts/standardise_validate.py"
+        args:
+          - "--source"
+          - "{{inputs.parameters.file}}"
+          - "--scale"
+          - "{{workflow.parameters.scale1}}"
+          - "--preset"
+          - "{{workflow.parameters.compression}}"
+          - "--start-datetime"
+          - "{{=sprig.trim(workflow.parameters['start-datetime'])}}"
+          - "--end-datetime"
+          - "{{=sprig.trim(workflow.parameters['end-datetime'])}}"
+          - "--collection-id"
+          - "{{inputs.parameters.collection-id}}"
+          - "--cutline"
+          - "{{=sprig.trim(workflow.parameters.cutline)}}"
+      outputs:
+        artifacts:
+          - name: standardised_tiffs
+            path: /tmp/
+            archive:
+              none: {}
+    - name: standardise-validate2
+      retryStrategy:
+        limit: "2"
+      nodeSelector:
+        karpenter.sh/capacity-type: "spot"
+      inputs:
+        parameters:
+          - name: file
+          - name: collection-id
+      container:
+        image: "ghcr.io/linz/topo-imagery:{{=sprig.trim(workflow.parameters['version-topo-imagery'])}}"
+        resources:
+          requests:
+            memory: 7.8Gi
+            cpu: 15000m
+            ephemeral-storage: 3Gi
+        volumeMounts:
+          - name: ephemeral
+            mountPath: "/tmp"
+        command:
+          - python
+          - "/app/scripts/standardise_validate.py"
+        args:
+          - "--source"
+          - "{{inputs.parameters.file}}"
+          - "--scale"
+          - "{{workflow.parameters.scale2}}"
+          - "--preset"
+          - "{{workflow.parameters.compression}}"
+          - "--start-datetime"
+          - "{{=sprig.trim(workflow.parameters['start-datetime'])}}"
+          - "--end-datetime"
+          - "{{=sprig.trim(workflow.parameters['end-datetime'])}}"
+          - "--collection-id"
+          - "{{inputs.parameters.collection-id}}"
+          - "--cutline"
+          - "{{=sprig.trim(workflow.parameters.cutline)}}"
+      outputs:
+        artifacts:
+          - name: standardised_tiffs
+            path: /tmp/
+            archive:
+              none: { }
+    - name: flatten
+      inputs:
+        parameters:
+          - name: location
+      container:
+        image: "ghcr.io/linz/argo-tasks:{{=sprig.trim(workflow.parameters['version-argo-tasks'])}}"
+        command: [node, /app/index.js]
+        env:
+          - name: AWS_ROLE_CONFIG_PATH
+            value: s3://linz-bucket-config/config.json
+        args:
+          [
+            "create-manifest",
+            "--flatten",
+            "--verbose",
+            "--include",
+            ".tiff?$|.json$",
+            "--group",
+            "1000",
+            "--group-size",
+            "100Gi",
+            "--output",
+            "/tmp/file_list.json",
+            "--target",
+            "{{inputs.parameters.location}}flat/",
+            "{{inputs.parameters.location}}",
+          ]
+      outputs:
+        parameters:
+          - name: files
+            valueFrom:
+              path: /tmp/file_list.json
+    - name: flatten-copy
+      retryStrategy:
+        limit: "2"
+      inputs:
+        parameters:
+          - name: file
+      container:
+        image: "ghcr.io/linz/argo-tasks:{{=sprig.trim(workflow.parameters['version-argo-tasks'])}}"
+        resources:
+          requests:
+            memory: 7.8Gi
+            cpu: 2000m
+        command: [node, /app/index.js]
+        args:
+          [
+            "copy",
+            "{{workflow.parameters.copy-option}}",
+            "{{inputs.parameters.file}}",
+          ]
+    - name: create-collection
+      retryStrategy:
+        limit: "2"
+      nodeSelector:
+        karpenter.sh/capacity-type: "spot"
+      inputs:
+        parameters:
+          - name: collection-id
+          - name: location
+      container:
+        image: "ghcr.io/linz/topo-imagery:{{=sprig.trim(workflow.parameters['version-topo-imagery'])}}"
+        resources:
+          requests:
+            memory: 7.8Gi
+            cpu: 2000m
+        command:
+          - python
+          - "/app/scripts/collection_from_items.py"
+        args:
+          - "--uri"
+          - "{{inputs.parameters.location}}flat/"
+          - "--collection-id"
+          - "{{inputs.parameters.collection-id}}"
+          - "--title"
+          - "{{=sprig.trim(workflow.parameters.title)}}"
+          - "--description"
+          - "{{=sprig.trim(workflow.parameters.description)}}"
+          - "--producer"
+          - "{{workflow.parameters.producer}}"
+          - "--licensor"
+          - "{{workflow.parameters.licensor}}"
+          - "--licensor-list"
+          - "{{=sprig.trim(workflow.parameters['licensor-list'])}}"
+          - "--concurrency"
+          - "25"
+    - name: stac-validate
+      inputs:
+        parameters:
+          - name: location
+      container:
+        image: "ghcr.io/linz/argo-tasks:{{=sprig.trim(workflow.parameters['version-argo-tasks'])}}"
+        command: [node, /app/index.js]
+        env:
+          - name: AWS_ROLE_CONFIG_PATH
+            value: s3://linz-bucket-config/config.json
+        args:
+          [
+            "stac-validate",
+            "--recursive",
+            "{{inputs.parameters.location}}flat/collection.json",
+          ]
+    - name: get-location
+      script:
+        image: node:alpine
+        command: [node]
+        source: |
+          const fs = require('fs');
+          const loc = JSON.parse(process.env['ARGO_TEMPLATE']).archiveLocation.s3;
+          const key = loc.key.replace('{{pod.name}}','');
+          fs.writeFileSync('/tmp/location', `s3://${loc.bucket}/${key}`);
+      outputs:
+        parameters:
+          - name: location
+            valueFrom:
+              path: "/tmp/location"
+    - name: create-overview
+      inputs:
+        parameters:
+          - name: location
+      container:
+        image: "ghcr.io/linz/basemaps/cli:{{=sprig.trim(workflow.parameters['version-basemaps-cli'])}}"
+        resources:
+          requests:
+            cpu: 3000m
+            memory: 7.8Gi
+        command: [node, index.cjs]
+        env:
+          - name: AWS_ROLE_CONFIG_PATH
+            value: s3://linz-bucket-config/config.json
+        args:
+          [
+            "-V",
+            "create-overview",
+            "--source",
+            "{{inputs.parameters.location}}flat/",
+            "--output",
+            "{{inputs.parameters.location}}flat/",
+          ]
+    - name: create-config
+      inputs:
+        parameters:
+          - name: location
+      container:
+        image: "ghcr.io/linz/basemaps/cli:{{=sprig.trim(workflow.parameters['version-basemaps-cli'])}}"
+        command: [node, index.cjs]
+        env:
+          - name: AWS_ROLE_CONFIG_PATH
+            value: s3://linz-bucket-config/config.json
+        args:
+          [
+            "-V",
+            "create-config",
+            "--path",
+            "{{inputs.parameters.location}}flat/",
+            "--output",
+            "/tmp/url",
+            "--title",
+            "{{=sprig.trim(workflow.parameters.title)}}",
+            "--commit",
+          ]
+      outputs:
+        parameters:
+          - name: url
+            valueFrom:
+              path: "/tmp/url"
+  volumes:
+    - name: ephemeral
+      emptyDir: {}
