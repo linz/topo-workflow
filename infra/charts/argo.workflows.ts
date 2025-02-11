@@ -54,7 +54,7 @@ const appVersion = 'v3.5.5';
 
 export class ArgoWorkflows extends Chart {
   constructor(scope: Construct, id: string, props: ArgoWorkflowsProps & ChartProps) {
-    super(scope, id, applyDefaultLabels(props, 'argo-workflows', appVersion, 'logs', 'workflows'));
+    super(scope, id, applyDefaultLabels(props, 'argo', appVersion, 'argo-workflows', 'workflows'));
 
     const artifactRepository = {
       archiveLogs: true,
