@@ -406,7 +406,9 @@ spec:
             depends: 'tile-index-validate'
 
           - name: standardise-validate
-            template: standardise-validate
+            templateRef:
+              name: tpl-ti-standardise-validate
+              template: main
             arguments:
               parameters:
                 - name: group_id
@@ -417,6 +419,26 @@ spec:
                   value: '{{tasks.stac-setup.finishedAt}}'
                 - name: target
                   value: '{{=sprig.trimSuffix("/", tasks["get-location"].outputs.parameters.location)}}/flat/'
+                - name: odr_url
+                  value: '{{=sprig.trim(workflow.parameters.odr_url)}}'
+                - name: compression
+                  value: '{{= workflow.parameters.compression}}'
+                - name: start_datetime
+                  value: '{{=sprig.trim(workflow.parameters.start_datetime)}}'
+                - name: end_datetime
+                  value: '{{=sprig.trim(workflow.parameters.end_datetime)}}'
+                - name: create_capture_area
+                  value: '{{=sprig.trim(workflow.parameters.create_capture_area)}}'
+                - name: cutline
+                  value: '{{=sprig.trim(workflow.parameters.cutline)}}'
+                - name: gsd
+                  value: '{{=sprig.trim(workflow.parameters.gsd)}}'
+                - name: source_epsg
+                  value: '{{=sprig.trim(workflow.parameters.source_epsg)}}'
+                - name: target_epsg
+                  value: '{{=sprig.trim(workflow.parameters.target_epsg)}}'
+                - name: version_topo_imagery
+                  value: '{{= workflow.parameters.version_topo_imagery}}'
               artifacts:
                 - name: group_data
                   from: '{{ tasks.group.outputs.artifacts.output }}'
@@ -424,7 +446,9 @@ spec:
             withParam: '{{ tasks.group.outputs.parameters.output }}'
 
           - name: create-collection
-            template: create-collection
+            templateRef:
+              name: tpl-ti-create-collection
+              template: main
             arguments:
               parameters:
                 - name: collection_id
@@ -435,6 +459,34 @@ spec:
                   value: '{{tasks.get-location.outputs.parameters.location}}'
                 - name: current_datetime
                   value: '{{tasks.stac-setup.finishedAt}}'
+                - name: odr_url
+                  value: '{{=sprig.trim(workflow.parameters.odr_url)}}'
+                - name: category
+                  value: '{{=sprig.trim(workflow.parameters.category)}}'
+                - name: region
+                  value: '{{=sprig.trim(workflow.parameters.region)}}'
+                - name: gsd
+                  value: '{{=sprig.trim(workflow.parameters.gsd)}}'
+                - name: geographic_description
+                  value: '{{=sprig.trim(workflow.parameters.geographic_description)}}'
+                - name: event
+                  value: '{{=sprig.trim(workflow.parameters.event)}}'
+                - name: historic_survey_number
+                  value: '{{=sprig.trim(workflow.parameters.historic_survey_number)}}'
+                - name: lifecycle
+                  value: '{{=sprig.trim(workflow.parameters.lifecycle)}}'
+                - name: add_title_suffix
+                  value: 'true'
+                - name: producer
+                  value: '{{workflow.parameters.producer}}'
+                - name: producer_list
+                  value: '{{=sprig.trim(workflow.parameters.producer_list)}}'
+                - name: licensor
+                  value: '{{workflow.parameters.licensor}}'
+                - name: licensor_list
+                  value: '{{=sprig.trim(workflow.parameters.licensor_list)}}'
+                - name: version
+                  value: '{{= workflow.parameters.version_topo-imagery}}'
             depends: 'standardise-validate'
 
           - name: stac-validate
@@ -501,119 +553,6 @@ spec:
             valueFrom:
               parameter: '{{tasks.get-location.outputs.parameters.location}}'
       # END TEMPLATE `main`
-
-    - name: standardise-validate
-      nodeSelector:
-        karpenter.sh/capacity-type: 'spot'
-      inputs:
-        parameters:
-          - name: group_id
-          - name: collection_id
-          - name: current_datetime
-          - name: target
-        artifacts:
-          - name: group_data
-            path: /tmp/input/
-      container:
-        image: '019359803926.dkr.ecr.ap-southeast-2.amazonaws.com/topo-imagery:{{=sprig.trim(workflow.parameters.version_topo_imagery)}}'
-        resources:
-          requests:
-            memory: 7.8Gi
-            cpu: 15000m
-            ephemeral-storage: 29.5Gi
-        volumeMounts:
-          - name: ephemeral
-            mountPath: '/tmp'
-        args:
-          - python
-          - '/app/scripts/standardise_validate.py'
-          - '--from-file'
-          - '/tmp/input/{{inputs.parameters.group_id}}.json'
-          - '--target'
-          - '{{inputs.parameters.target}}'
-          - '--preset'
-          - '{{workflow.parameters.compression}}'
-          - '--start-datetime'
-          - '{{=sprig.trim(workflow.parameters.start_datetime)}}'
-          - '--end-datetime'
-          - '{{=sprig.trim(workflow.parameters.end_datetime)}}'
-          - '--collection-id'
-          - '{{inputs.parameters.collection_id}}'
-          - '--create-footprints'
-          - '{{workflow.parameters.create_capture_area}}'
-          - '--cutline'
-          - '{{=sprig.trim(workflow.parameters.cutline)}}'
-          - '--source-epsg'
-          - '{{=sprig.trim(workflow.parameters.source_epsg)}}'
-          - '--target-epsg'
-          - '{{=sprig.trim(workflow.parameters.target_epsg)}}'
-          - '--gsd'
-          - '{{=sprig.trim(workflow.parameters.gsd)}}'
-          - '--odr-url'
-          - '{{=sprig.trim(workflow.parameters.odr_url)}}'
-          - '--current-datetime'
-          - '{{inputs.parameters.current_datetime}}'
-
-    - name: create-collection
-      nodeSelector:
-        karpenter.sh/capacity-type: 'spot'
-      inputs:
-        parameters:
-          - name: collection_id
-          - name: linz_slug
-          - name: location
-          - name: current_datetime
-      outputs:
-        artifacts:
-          - name: capture-area
-            path: '/tmp/capture-area.geojson'
-            optional: true
-            archive:
-              none: {}
-      container:
-        image: '019359803926.dkr.ecr.ap-southeast-2.amazonaws.com/topo-imagery:{{=sprig.trim(workflow.parameters.version_topo_imagery)}}'
-        resources:
-          requests:
-            memory: 7.8Gi
-            cpu: 15000m
-        args:
-          - python
-          - '/app/scripts/collection_from_items.py'
-          - '--uri'
-          - '{{=sprig.trimSuffix("/", inputs.parameters.location)}}/flat/'
-          - '--collection-id'
-          - '{{inputs.parameters.collection_id}}'
-          - '--linz-slug'
-          - '{{inputs.parameters.linz_slug}}'
-          - '--odr-url'
-          - '{{=sprig.trim(workflow.parameters.odr_url)}}'
-          - '--category'
-          - '{{=sprig.trim(workflow.parameters.category)}}'
-          - '--region'
-          - '{{=sprig.trim(workflow.parameters.region)}}'
-          - '--gsd'
-          - '{{=sprig.trim(workflow.parameters.gsd)}}'
-          - '--geographic-description'
-          - '{{=sprig.trim(workflow.parameters.geographic_description)}}'
-          - '--event'
-          - '{{=sprig.trim(workflow.parameters.event)}}'
-          - '--historic-survey-number'
-          - '{{=sprig.trim(workflow.parameters.historic_survey_number)}}'
-          - '--lifecycle'
-          - '{{=sprig.trim(workflow.parameters.lifecycle)}}'
-          - '--add-title-suffix'
-          - '--producer'
-          - '{{workflow.parameters.producer}}'
-          - '--producer-list'
-          - '{{=sprig.trim(workflow.parameters.producer_list)}}'
-          - '--licensor'
-          - '{{workflow.parameters.licensor}}'
-          - '--licensor-list'
-          - '{{=sprig.trim(workflow.parameters.licensor_list)}}'
-          - '--concurrency'
-          - '25'
-          - '--current-datetime'
-          - '{{inputs.parameters.current_datetime}}'
 
     - name: create-overview
       inputs:

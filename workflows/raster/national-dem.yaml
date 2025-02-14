@@ -127,7 +127,9 @@ spec:
             depends: 'group.Succeeded'
 
           - name: standardise-validate
-            template: standardise-validate
+            templateRef:
+              name: tpl-ti-standardise-validate
+              template: main
             arguments:
               parameters:
                 - name: group_id
@@ -138,6 +140,20 @@ spec:
                   value: '{{tasks.stac-setup.finishedAt}}'
                 - name: target
                   value: '{{=sprig.trimSuffix("/", tasks["get-location"].outputs.parameters.location)}}/flat/'
+                - name: odr_url
+                  value: '{{=sprig.trim(workflow.parameters.odr_url)}}'
+                - name: compression
+                  value: 'dem_lerc'
+                - name: create_capture_area
+                  value: 'true'
+                - name: gsd
+                  value: '1'
+                - name: source_epsg
+                  value: '2193'
+                - name: target_epsg
+                  value: '2193'
+                - name: version_topo_imagery
+                  value: '{{= workflow.parameters.version_topo_imagery}}'
               artifacts:
                 - name: group_data
                   from: '{{ tasks.group.outputs.artifacts.output }}'
@@ -145,7 +161,9 @@ spec:
             withParam: '{{ tasks.group.outputs.parameters.output }}'
 
           - name: create-collection
-            template: create-collection
+            templateRef:
+              name: tpl-ti-create-collection
+              template: main
             arguments:
               parameters:
                 - name: collection_id
@@ -156,6 +174,24 @@ spec:
                   value: '{{tasks.get-location.outputs.parameters.location}}'
                 - name: current_datetime
                   value: '{{tasks.stac-setup.finishedAt}}'
+                - name: odr_url
+                  value: '{{=sprig.trim(workflow.parameters.odr_url)}}'
+                - name: category
+                  value: 'dem'
+                - name: region
+                  value: 'new-zealand'
+                - name: gsd
+                  value: '1'
+                - name: lifecycle
+                  value: 'ongoing'
+                - name: producer
+                  value: 'Toitū Te Whenua Land Information New Zealand'
+                - name: licensor
+                  value: 'Toitū Te Whenua Land Information New Zealand'
+                - name: create_capture_dates
+                  value: 'true'
+                - name: version_topo_imagery
+                  value: '{{= workflow.parameters.version_topo-imagery}}'
             depends: 'standardise-validate.Succeeded'
 
           - name: stac-validate
@@ -266,107 +302,6 @@ spec:
               key: '{{=sprig.trimSuffix("/", inputs.parameters.key)}}/flat/capture-dates.geojson'
             archive:
               none: {}
-
-    - name: standardise-validate
-      nodeSelector:
-        karpenter.sh/capacity-type: 'spot'
-      inputs:
-        parameters:
-          - name: group_id
-          - name: collection_id
-          - name: current_datetime
-          - name: target
-        artifacts:
-          - name: group_data
-            path: /tmp/input/
-      container:
-        image: '019359803926.dkr.ecr.ap-southeast-2.amazonaws.com/topo-imagery:{{=sprig.trim(workflow.parameters.version_topo_imagery)}}'
-        resources:
-          requests:
-            memory: 7.8Gi
-            cpu: 15000m
-            ephemeral-storage: 3Gi
-        volumeMounts:
-          - name: ephemeral
-            mountPath: '/tmp'
-        args:
-          - python
-          - '/app/scripts/standardise_validate.py'
-          - '--from-file'
-          - '/tmp/input/{{inputs.parameters.group_id}}.json'
-          - '--target'
-          - '{{inputs.parameters.target}}'
-          - '--preset'
-          - 'dem_lerc'
-          - '--collection-id'
-          - '{{inputs.parameters.collection_id}}'
-          - '--create-footprints'
-          - 'true'
-          - '--source-epsg'
-          - '2193'
-          - '--target-epsg'
-          - '2193'
-          - '--gsd'
-          - '1'
-          - '--odr-url'
-          - '{{=sprig.trim(workflow.parameters.odr_url)}}'
-          - '--current-datetime'
-          - '{{inputs.parameters.current_datetime}}'
-
-    - name: create-collection
-      nodeSelector:
-        karpenter.sh/capacity-type: 'spot'
-      inputs:
-        parameters:
-          - name: collection_id
-          - name: linz_slug
-          - name: location
-          - name: current_datetime
-      outputs:
-        artifacts:
-          - name: capture-area
-            path: '/tmp/capture-area.geojson'
-            optional: true
-            archive:
-              none: {}
-      container:
-        image: '019359803926.dkr.ecr.ap-southeast-2.amazonaws.com/topo-imagery:{{=sprig.trim(workflow.parameters.version_topo_imagery)}}'
-        resources:
-          requests:
-            memory: 7.8Gi
-            cpu: 15000m
-        args:
-          - python
-          - '/app/scripts/collection_from_items.py'
-          - '--uri'
-          - '{{=sprig.trimSuffix("/", inputs.parameters.location)}}/flat/'
-          - '--collection-id'
-          - '{{inputs.parameters.collection_id}}'
-          - '--linz-slug'
-          - '{{inputs.parameters.linz_slug}}'
-          - '--odr-url'
-          - '{{=sprig.trim(workflow.parameters.odr_url)}}'
-          - '--category'
-          - 'dem'
-          - '--region'
-          - 'new-zealand'
-          - '--gsd'
-          - '1'
-          - '--lifecycle'
-          - 'ongoing'
-          - '--producer'
-          - 'Toitū Te Whenua Land Information New Zealand'
-          - '--producer-list'
-          - ''
-          - '--licensor'
-          - 'Toitū Te Whenua Land Information New Zealand'
-          - '--licensor-list'
-          - ''
-          - '--concurrency'
-          - '25'
-          - '--capture-dates'
-          - '--current-datetime'
-          - '{{inputs.parameters.current_datetime}}'
 
     - name: create-config
       inputs:
